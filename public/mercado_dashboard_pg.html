@@ -380,20 +380,7 @@
           console.error(err);
           connStatus.textContent = "API: erro";
           alert(
-            "Não consegui consultar a API do dashboard.
-
-" +
-              "Checklist:
-" +
-              "1) Seu servidor Node está rodando?
-" +
-              "2) Existe a rota GET /api/meg/dashboard?
-" +
-              "3) CORS (se host diferente) e firewall ok?
-
-" +
-              "Detalhe: " +
-              (err?.message || err)
+            "Não consegui consultar a API do dashboard." + (err?.message || err)
           );
         }
       }
@@ -523,7 +510,7 @@
 
         const ids = new Set(pedidos.map((p) => String(p.id ?? p.ID)));
         let itens = ALL_ITEM.filter((i) => ids.has(String(i.pedido_id ?? i.PEDIDO_ID ?? i.pedidoId)) && (!pr || (i.produto ?? i.PRODUTO) === pr));
-        itens = itens.sort((a, b) => String(a.produto ?? a.PRODUTO || "").localeCompare(String(b.produto ?? b.PRODUTO || "")));
+        itens = itens.sort((a, b) => String(a.produto ? a.PRODUTO : "").localeCompare(String(b.produto ? b.PRODUTO : "")));
 
         renderKPIs(pedidos, itens);
         renderTables(pedidos, itens);
@@ -538,10 +525,10 @@
         document.getElementById("kpiPedidos").textContent = pedidos.length;
         document.getElementById("kpiClientes").textContent = new Set(pedidos.map((p) => p.cliente ?? p.CLIENTE)).size;
 
-        const fat = pedidos.reduce((s, p) => s + Number(p.total ?? p.TOTAL || 0), 0);
+        const fat = pedidos.reduce((s, p) => s + Number(p.total ? p.TOTAL : 0), 0);
         document.getElementById("kpiFaturamento").textContent = fmt(fat);
 
-        const qtd = itens.reduce((s, i) => s + Number(i.quantidade ?? i.QUANTIDADE || 0), 0);
+        const qtd = itens.reduce((s, i) => s + Number(i.quantidade ? i.QUANTIDADE : 0), 0);
         document.getElementById("kpiItens").textContent = String(qtd);
 
         document.getElementById("kpiTicket").textContent = fmt(pedidos.length ? fat / pedidos.length : 0);
@@ -552,7 +539,7 @@
         tp.innerHTML = pedidos
           .map((p) => {
             const d = new Date(p.data ?? p.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${p.id ?? p.ID}</td><td>${p.cliente ?? p.CLIENTE} (${p.nome ?? p.NOME || ""})</td><td>${fmt(p.total ?? p.TOTAL || 0)}</td><td>${p.status ?? p.STATUS}</td></tr>`;
+            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${p.id ?? p.ID}</td><td>${p.cliente ?? p.CLIENTE} (${p.nome ? p.NOME : ""})</td><td>${fmt(p.total ? p.TOTAL : 0)}</td><td>${p.status ?? p.STATUS}</td></tr>`;
           })
           .join("");
 
@@ -560,7 +547,7 @@
         ti.innerHTML = itens
           .map((i) => {
             const d = new Date(i.data ?? i.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${i.pedido_id ?? i.PEDIDO_ID ?? ""}</td><td>${i.produto ?? i.PRODUTO}</td><td style='text-align:right'>${fmt(i.preco ?? i.PRECO || 0)}</td><td>${i.quantidade ?? i.QUANTIDADE}</td><td>${i.status ?? i.STATUS}</td></tr>`;
+            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${i.pedido_id ?? i.PEDIDO_ID ?? ""}</td><td>${i.produto ?? i.PRODUTO}</td><td style='text-align:right'>${fmt(i.preco ? i.PRECO : 0)}</td><td>${i.quantidade ?? i.QUANTIDADE}</td><td>${i.status ?? i.STATUS}</td></tr>`;
           })
           .join("");
       }
@@ -573,7 +560,7 @@
           const d = d0.toISOString().slice(0, 10);
           if (!byDate[d]) byDate[d] = { o: 0, r: 0 };
           byDate[d].o++;
-          byDate[d].r += Number(p.total ?? p.TOTAL || 0);
+          byDate[d].r += Number(p.total ? p.TOTAL : 0);
         });
 
         const labels = Object.keys(byDate).sort();
@@ -589,7 +576,7 @@
         const byProd = {};
         itens.forEach((i) => {
           const prod = i.produto ?? i.PRODUTO;
-          byProd[prod] = (byProd[prod] || 0) + Number(i.quantidade ?? i.QUANTIDADE || 0);
+          byProd[prod] = (byProd[prod] || 0) + Number(i.quantidade ? i.QUANTIDADE : 0);
         });
 
         const topP = Object.entries(byProd)
@@ -599,7 +586,7 @@
         const byCli = {};
         pedidos.forEach((p) => {
           const cli = p.cliente ?? p.CLIENTE;
-          byCli[cli] = (byCli[cli] || 0) + Number(p.total ?? p.TOTAL || 0);
+          byCli[cli] = (byCli[cli] || 0) + Number(p.total ? p.TOTAL : 0);
         });
 
         const topC = Object.entries(byCli)
@@ -712,7 +699,7 @@
 
             pdf.text(String(i.produto ?? i.PRODUTO), 12, y);
             pdf.text(String(i.quantidade ?? i.QUANTIDADE), 150, y);
-            pdf.text(`R$ ${Number(i.preco ?? i.PRECO || 0).toFixed(2)}`, 200, y, null, null, "right");
+            pdf.text(`R$ ${Number(i.preco ? i.PRECO : 0).toFixed(2)}`, 200, y, null, null, "right");
 
             y += 8;
             if (y > 270) {
