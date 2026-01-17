@@ -4,157 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Dashboard de Pedidos - Mercado Guarará (Postgres)</title>
-    <link rel="icon" type="image/png" href="favicon_midilabs.png" />
+    <link rel="icon" type="image/png" href="./images/favicon_midilabs.png" />
+    <link href="./style.css" rel="stylesheet" />
 
     <!-- Charts + PDF -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
-
-    <style>
-      body {
-        font-family: Inter, sans-serif;
-        margin: 0;
-        background: #0b1220;
-        color: #e6eef7;
-        padding: 20px;
-      }
-      .light {
-        background: #f5f5f5;
-        color: #333;
-      }
-      h1 {
-        margin-bottom: 8px;
-      }
-      .hint {
-        font-size: 12px;
-        color: #9fb3c8;
-        margin-top: 0;
-        margin-bottom: 14px;
-      }
-      .light .hint {
-        color: #6a6a6a;
-      }
-      .controls {
-        display: grid;
-        grid-template-columns: 160px 160px 160px repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        margin-bottom: 16px;
-      }
-      label {
-        font-size: 12px;
-        margin-bottom: 4px;
-        display: block;
-      }
-      select,
-      input {
-        width: 100%;
-        padding: 6px;
-        border-radius: 6px;
-        border: 1px solid #444;
-        background: transparent;
-        color: inherit;
-      }
-      .buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-      button {
-        padding: 6px 12px;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      button.secondary {
-        background: rgba(255, 255, 255, 0.08);
-        color: inherit;
-      }
-      .light button.secondary {
-        background: #ececec;
-      }
-      button.primary {
-        background: #2b7fff;
-        color: #fff;
-      }
-      .status-pill {
-        font-size: 12px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #cfe6ff;
-      }
-      .light .status-pill {
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        color: #2b2b2b;
-      }
-      .kpis {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .card {
-        background: #121a2b;
-        padding: 12px;
-        border-radius: 12px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-      }
-      .light .card {
-        background: #fff;
-        color: #333;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-      }
-      .kpi-title {
-        font-size: 12px;
-        color: #9fb3c8;
-      }
-      .light .kpi-title {
-        color: #6a6a6a;
-      }
-      .kpi-value {
-        font-size: 22px;
-        font-weight: 700;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-      }
-      th,
-      td {
-        padding: 6px;
-        border-bottom: 1px solid #333;
-        text-align: left;
-        font-size: 12px;
-      }
-      .light th,
-      .light td {
-        border-bottom: 1px solid #ccc;
-      }
-      canvas {
-        max-height: 300px;
-        margin-top: 8px;
-      }
-      .note {
-        font-size: 12px;
-        color: #9fb3c8;
-        margin: 0;
-      }
-      .light .note {
-        color: #6a6a6a;
-      }
-    </style>
   </head>
 
   <body>
     <h1>📊 Dashboard de Pedidos - Mercado Guarará</h1>
     <p class="hint">
-      Versão Postgres. Este HTML <b>não</b> conecta direto no banco (por segurança). Ele consome uma API HTTP do seu
-      servidor (Node/Express) que lê as tabelas <code>meg_pedido</code> e <code>meg_pedido_item</code>.
+      Versão Postgres. Esta versão conecta direto no banco de dados da automação e não mais no Excel.
     </p>
 
     <div class="buttons">
@@ -241,7 +104,7 @@
 
     <div class="card">
       <h3>Pedidos</h3>
-      <p class="note">Dica: clique em “Atualizar do Banco” para carregar <b>tudo</b>. Depois use os filtros (locais) quantas vezes quiser — sem nova consulta.</p>
+      <p class="note">Dica: use os filtros acima e clique em “Atualizar do Banco”.</p>
       <table id="tblPedidos">
         <thead>
           <tr>
@@ -285,11 +148,6 @@
       // =====================
       // Estado
       // =====================
-      // Conjunto COMPLETO carregado do banco (ao clicar em “Atualizar do Banco”)
-      let ALL_PEDIDO = [];
-      let ALL_ITEM = [];
-
-      // Recorte atual após filtros (somente frontend)
       let TB_PEDIDO = [];
       let TB_ITEM = [];
 
@@ -316,7 +174,7 @@
 
       document.getElementById("btnRefresh").onclick = async () => {
         await fetchDataFromAPI();
-        initFilters({ preserveSelection: true });
+        initFilters();
         // se o usuário ainda não escolheu datas, tenta preencher
         autoSetDateRange();
         applyFilters();
@@ -324,9 +182,12 @@
 
       ["dateStart", "dateEnd", "statusFilter", "clientFilter", "productFilter", "pedidoFilter"].forEach((id) =>
         document.getElementById(id).addEventListener("change", () => {
-          // Filtros são 100% locais: NÃO faz nova consulta ao banco.
-          // As opções dos selects permanecem completas (baseadas no conjunto carregado).
-          applyFilters();
+          // filtros mudaram: recarrega do banco (mais fiel) e reaplica
+          // (se quiser modo offline, troque por: applyFilters())
+          fetchDataFromAPI().then(() => {
+            initFilters();
+            applyFilters();
+          });
         })
       );
 
@@ -346,7 +207,7 @@
         if (!deEl.value) deEl.value = toI(today);
 
         await fetchDataFromAPI();
-        initFilters({ preserveSelection: true });
+        initFilters();
         applyFilters();
       })();
 
@@ -354,10 +215,26 @@
       // API
       // =====================
       async function fetchDataFromAPI() {
-        // Sempre busca o conjunto COMPLETO. Os filtros são aplicados apenas no frontend.
+        const ds = document.getElementById("dateStart").value;
+        const de = document.getElementById("dateEnd").value;
+
+        const params = new URLSearchParams();
+        if (ds) params.set("dateStart", ds);
+        if (de) params.set("dateEnd", de);
+
+        const pid = pedidoFilter.value;
+        const st = statusFilter.value;
+        const cl = (clientFilter.value || "").split("/")[0];
+        const pr = productFilter.value;
+
+        if (pid) params.set("pedidoId", pid);
+        if (st) params.set("status", st);
+        if (cl) params.set("cliente", cl);
+        if (pr) params.set("produto", pr);
+
         try {
           connStatus.textContent = "API: consultando...";
-          const resp = await fetch(`${API_BASE}/api/meg/dashboard`, {
+          const resp = await fetch(`${API_BASE}/api/meg/dashboard?${params.toString()}`, {
             headers: { Accept: "application/json" },
           });
 
@@ -367,31 +244,20 @@
           }
 
           const data = await resp.json();
-          ALL_PEDIDO = Array.isArray(data.pedidos) ? data.pedidos : [];
-          ALL_ITEM = Array.isArray(data.itens) ? data.itens : [];
+          TB_PEDIDO = Array.isArray(data.pedidos) ? data.pedidos : [];
+          TB_ITEM = Array.isArray(data.itens) ? data.itens : [];
 
-          // Inicialmente, o recorte (TB_*) é o conjunto completo
-          TB_PEDIDO = ALL_PEDIDO.slice();
-          TB_ITEM = ALL_ITEM.slice();
-
-          connStatus.textContent = `API: ok (${ALL_PEDIDO.length} pedidos)`;
+          connStatus.textContent = `API: ok (${TB_PEDIDO.length} pedidos)`;
           connStatus.style.opacity = 1;
         } catch (err) {
           console.error(err);
           connStatus.textContent = "API: erro";
           alert(
-            "Não consegui consultar a API do dashboard.
-
-" +
-              "Checklist:
-" +
-              "1) Seu servidor Node está rodando?
-" +
-              "2) Existe a rota GET /api/meg/dashboard?
-" +
-              "3) CORS (se host diferente) e firewall ok?
-
-" +
+            "Não consegui consultar a API do dashboard.\n\n" +
+              "Checklist:\n" +
+              "1) Seu servidor Node está rodando?\n" +
+              "2) Existe a rota GET /api/meg/dashboard?\n" +
+              "3) CORS (se host diferente) e firewall ok?\n\n" +
               "Detalhe: " +
               (err?.message || err)
           );
@@ -407,7 +273,7 @@
         const deEl = document.getElementById("dateEnd");
         if (dsEl.value && deEl.value) return;
 
-        const dates = ALL_PEDIDO.map((p) => new Date(p.data || p.DATA)).filter((d) => !isNaN(d));
+        const dates = TB_PEDIDO.map((p) => new Date(p.data || p.DATA)).filter((d) => !isNaN(d));
         if (!dates.length) return;
         dates.sort((a, b) => a - b);
 
@@ -417,16 +283,7 @@
         deEl.value = toI(dates[dates.length - 1]);
       }
 
-      function initFilters({ preserveSelection = true } = {}) {
-        const current = {
-          pedidoId: pedidoFilter.value,
-          status: statusFilter.value,
-          client: clientFilter.value,
-          product: productFilter.value,
-        };
-
-        // IMPORTANTE: as opções são sempre baseadas no conjunto COMPLETO (ALL_*)
-        // para permitir trocar combinações livremente sem perder opções.
+      function initFilters() {
         pedidoFilter.innerHTML = '<option value="">Todos</option>';
         statusFilter.innerHTML = '<option value="">Todos</option>';
         clientFilter.innerHTML = '<option value="">Todos</option>';
@@ -437,7 +294,7 @@
         const pSet = new Set();
         const idSet = new Set();
 
-        ALL_PEDIDO.forEach((p) => {
+        TB_PEDIDO.forEach((p) => {
           const STATUS = p.status ?? p.STATUS;
           const ID = p.id ?? p.ID;
           const CLIENTE = p.cliente ?? p.CLIENTE;
@@ -448,19 +305,17 @@
           if (ID != null) idSet.add(String(ID));
         });
 
-        ALL_ITEM.forEach((i) => {
+        TB_ITEM.forEach((i) => {
           const PRODUTO = i.produto ?? i.PRODUTO;
           if (PRODUTO) pSet.add(PRODUTO);
         });
 
-        [...idSet]
-          .sort((a, b) => Number(a) - Number(b))
-          .forEach((v) => {
-            const o = document.createElement("option");
-            o.value = v;
-            o.text = v;
-            pedidoFilter.appendChild(o);
-          });
+        [...idSet].sort((a, b) => Number(a) - Number(b)).forEach((v) => {
+          const o = document.createElement("option");
+          o.value = v;
+          o.text = v;
+          pedidoFilter.appendChild(o);
+        });
 
         [...sSet].sort().forEach((v) => {
           const o = document.createElement("option");
@@ -482,13 +337,6 @@
           o.text = v;
           productFilter.appendChild(o);
         });
-
-        if (preserveSelection) {
-          if (current.pedidoId && [...pedidoFilter.options].some((o) => o.value === current.pedidoId)) pedidoFilter.value = current.pedidoId;
-          if (current.status && [...statusFilter.options].some((o) => o.value === current.status)) statusFilter.value = current.status;
-          if (current.client && [...clientFilter.options].some((o) => o.value === current.client)) clientFilter.value = current.client;
-          if (current.product && [...productFilter.options].some((o) => o.value === current.product)) productFilter.value = current.product;
-        }
       }
 
       // =====================
@@ -504,9 +352,9 @@
 
         let pedidos;
         if (pid) {
-          pedidos = ALL_PEDIDO.filter((p) => String(p.id ?? p.ID) === String(pid));
+          pedidos = TB_PEDIDO.filter((p) => String(p.id ?? p.ID) === String(pid));
         } else {
-          pedidos = ALL_PEDIDO.filter((p) => {
+          pedidos = TB_PEDIDO.filter((p) => {
             const d = parseD(p.data ?? p.DATA);
             const STATUS = p.status ?? p.STATUS;
             const CLIENTE = p.cliente ?? p.CLIENTE;
@@ -522,8 +370,8 @@
         }
 
         const ids = new Set(pedidos.map((p) => String(p.id ?? p.ID)));
-        let itens = ALL_ITEM.filter((i) => ids.has(String(i.pedido_id ?? i.PEDIDO_ID ?? i.pedidoId)) && (!pr || (i.produto ?? i.PRODUTO) === pr));
-        itens = itens.sort((a, b) => String(a.produto ?? a.PRODUTO || "").localeCompare(String(b.produto ?? b.PRODUTO || "")));
+        let itens = TB_ITEM.filter((i) => ids.has(String(i.pedido_id ?? i.PEDIDO_ID ?? i.pedidoId)) && (!pr || (i.produto ?? i.PRODUTO) === pr));
+        itens = itens.sort((a, b) => String(a.produto ? a.PRODUTO : "").localeCompare(String(b.produto ? b.PRODUTO : "")));
 
         renderKPIs(pedidos, itens);
         renderTables(pedidos, itens);
@@ -538,10 +386,10 @@
         document.getElementById("kpiPedidos").textContent = pedidos.length;
         document.getElementById("kpiClientes").textContent = new Set(pedidos.map((p) => p.cliente ?? p.CLIENTE)).size;
 
-        const fat = pedidos.reduce((s, p) => s + Number(p.total ?? p.TOTAL || 0), 0);
+        const fat = pedidos.reduce((s, p) => s + Number(p.total ? p.TOTAL : 0), 0);
         document.getElementById("kpiFaturamento").textContent = fmt(fat);
 
-        const qtd = itens.reduce((s, i) => s + Number(i.quantidade ?? i.QUANTIDADE || 0), 0);
+        const qtd = itens.reduce((s, i) => s + Number(i.quantidade ? i.QUANTIDADE : 0), 0);
         document.getElementById("kpiItens").textContent = String(qtd);
 
         document.getElementById("kpiTicket").textContent = fmt(pedidos.length ? fat / pedidos.length : 0);
@@ -552,7 +400,7 @@
         tp.innerHTML = pedidos
           .map((p) => {
             const d = new Date(p.data ?? p.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${p.id ?? p.ID}</td><td>${p.cliente ?? p.CLIENTE} (${p.nome ?? p.NOME || ""})</td><td>${fmt(p.total ?? p.TOTAL || 0)}</td><td>${p.status ?? p.STATUS}</td></tr>`;
+            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${p.id ?? p.ID}</td><td>${p.cliente ?? p.CLIENTE} (${p.nome ? p.NOME : ""})</td><td>${fmt(p.total ? p.TOTAL : 0)}</td><td>${p.status ?? p.STATUS}</td></tr>`;
           })
           .join("");
 
@@ -560,7 +408,7 @@
         ti.innerHTML = itens
           .map((i) => {
             const d = new Date(i.data ?? i.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${i.pedido_id ?? i.PEDIDO_ID ?? ""}</td><td>${i.produto ?? i.PRODUTO}</td><td style='text-align:right'>${fmt(i.preco ?? i.PRECO || 0)}</td><td>${i.quantidade ?? i.QUANTIDADE}</td><td>${i.status ?? i.STATUS}</td></tr>`;
+            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${i.pedido_id ?? i.PEDIDO_ID ?? ""}</td><td>${i.produto ?? i.PRODUTO}</td><td style='text-align:right'>${fmt(i.preco ? i.PRECO : 0)}</td><td>${i.quantidade ?? i.QUANTIDADE}</td><td>${i.status ?? i.STATUS}</td></tr>`;
           })
           .join("");
       }
@@ -573,7 +421,7 @@
           const d = d0.toISOString().slice(0, 10);
           if (!byDate[d]) byDate[d] = { o: 0, r: 0 };
           byDate[d].o++;
-          byDate[d].r += Number(p.total ?? p.TOTAL || 0);
+          byDate[d].r += Number(p.total ? p.TOTAL : 0);
         });
 
         const labels = Object.keys(byDate).sort();
@@ -589,7 +437,7 @@
         const byProd = {};
         itens.forEach((i) => {
           const prod = i.produto ?? i.PRODUTO;
-          byProd[prod] = (byProd[prod] || 0) + Number(i.quantidade ?? i.QUANTIDADE || 0);
+          byProd[prod] = (byProd[prod] || 0) + Number(i.quantidade ? i.QUANTIDADE : 0);
         });
 
         const topP = Object.entries(byProd)
@@ -599,7 +447,7 @@
         const byCli = {};
         pedidos.forEach((p) => {
           const cli = p.cliente ?? p.CLIENTE;
-          byCli[cli] = (byCli[cli] || 0) + Number(p.total ?? p.TOTAL || 0);
+          byCli[cli] = (byCli[cli] || 0) + Number(p.total ? p.TOTAL : 0);
         });
 
         const topC = Object.entries(byCli)
@@ -712,7 +560,7 @@
 
             pdf.text(String(i.produto ?? i.PRODUTO), 12, y);
             pdf.text(String(i.quantidade ?? i.QUANTIDADE), 150, y);
-            pdf.text(`R$ ${Number(i.preco ?? i.PRECO || 0).toFixed(2)}`, 200, y, null, null, "right");
+            pdf.text(`R$ ${Number(i.preco ? i.PRECO : 0).toFixed(2)}`, 200, y, null, null, "right");
 
             y += 8;
             if (y > 270) {
