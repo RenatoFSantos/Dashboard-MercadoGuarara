@@ -365,9 +365,15 @@
           if (dates.length) {
             const min = new Date(Math.min(...dates.map((d) => d.getTime())));
             const max = new Date(Math.max(...dates.map((d) => d.getTime())));
-            const iso = (d) => d.toISOString().slice(0, 10);
-            if (!dsEl.value) dsEl.value = iso(min);
-            if (!deEl.value) deEl.value = iso(max);
+	      	      // Use local date parts (avoid UTC shift from toISOString)
+	      	      const isoLocal = (d) => {
+	      	        const y = d.getFullYear();
+	      	        const m = String(d.getMonth() + 1).padStart(2, "0");
+	      	        const day = String(d.getDate()).padStart(2, "0");
+	      	        return `${y}-${m}-${day}`;
+	      	      };
+	      	      if (!dsEl.value) dsEl.value = isoLocal(min);
+	      	      if (!deEl.value) deEl.value = isoLocal(max);
           }
         }
 
@@ -484,8 +490,22 @@
         const pid = pedidoFilter.value;
         const dsRaw = document.getElementById("dateStart").value;
         const deRaw = document.getElementById("dateEnd").value;
-        const ds = dsRaw ? new Date(dsRaw) : null;
-        const de = deRaw ? new Date(deRaw) : null;
+        // IMPORTANT: input[type=date] returns "YYYY-MM-DD".
+        // In many browsers, new Date("YYYY-MM-DD") is parsed as UTC,
+        // which can shift the date in timezones like -03:00 and cause
+        // off-by-one-day filtering.
+        const parseDateInputLocal = (iso) => {
+          if (!iso) return null;
+          const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!m) return null;
+          const y = Number(m[1]);
+          const mo = Number(m[2]);
+          const d = Number(m[3]);
+          return new Date(y, mo - 1, d, 0, 0, 0, 0); // local midnight
+        };
+
+        const ds = parseDateInputLocal(dsRaw);
+        const de = parseDateInputLocal(deRaw);
         const st = statusFilter.value;
         const cl = (clientFilter.value || "").split("/")[0];
         const pr = productFilter.value;
@@ -499,7 +519,8 @@
             const STATUS = pick(p, "status", "STATUS");
             const CLIENTE = pick(p, "cliente", "CLIENTE");
 
-            const deEnd = de ? new Date(de.getFullYear(), de.getMonth(), de.getDate(), 23, 59, 59) : null;
+            // end date must be inclusive (end of day)
+            const deEnd = de ? new Date(de.getFullYear(), de.getMonth(), de.getDate(), 23, 59, 59, 999) : null;
             return (
               (!ds || (d && d >= ds)) &&
               (!deEnd || (d && d <= deEnd)) &&
