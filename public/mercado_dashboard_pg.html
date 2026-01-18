@@ -273,33 +273,71 @@
       </table>
     </div>
 
+    
     <script>
       // =====================
-      // Config
+      // Helpers (números / datas)
       // =====================
-      // Ajuste aqui se sua API estiver em outro host/porta.
-      // - ""  => mesma origem (recomendado se você servir este HTML pelo mesmo servidor)
-      // - "https://seu-dominio" => host externo
-      const API_BASE = "";
+      const pick = (obj, ...keys) => {
+        for (const k of keys) {
+          if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+        }
+        return null;
+      };
 
-      // =====================
-      // Estado
-      // =====================
-      // Conjunto COMPLETO carregado do banco (ao clicar em “Atualizar do Banco”)
-      let ALL_PEDIDO = [];
-      let ALL_ITEM = [];
+      const toNumber = (v) => {
+        if (v === undefined || v === null) return 0;
+        if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+        if (typeof v === "bigint") return Number(v);
+        if (typeof v !== "string") return 0;
 
-      // Recorte atual após filtros (somente frontend)
-      let TB_PEDIDO = [];
-      let TB_ITEM = [];
+        let s = v.trim();
+        if (!s) return 0;
 
-      const fmt = (n) =>
-        (Number(n) || 0).toLocaleString("pt-BR", {
+        // remove moeda e espaços
+        s = s.replace(/R\$\s?/gi, "").replace(/\s+/g, "");
+        // mantém apenas dígitos, ponto, vírgula e sinal
+        s = s.replace(/[^0-9,\.\-]/g, "");
+
+        // pt-BR: 1.234,56
+        if (s.includes(",") && s.includes(".")) {
+          s = s.replace(/\./g, "").replace(/,/g, ".");
+        } else if (s.includes(",")) {
+          s = s.replace(/,/g, ".");
+        }
+
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      const fmtMoney = (v) =>
+        toNumber(v).toLocaleString("pt-BR", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
 
-      const parseD = (s) => (s ? new Date(s) : null);
+      const fmtQty = (v) => {
+        const n = toNumber(v);
+        // mostra sem casas se for inteiro
+        if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+        return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+
+      const parseD = (s) => {
+        if (!s) return null;
+        const d = new Date(s);
+        return isNaN(d) ? null : d;
+      };
+
+      // =====================
+      // Estado (dados completos do banco)
+      // =====================
+      let ALL_PEDIDO = [];
+      let ALL_ITEM = [];
+
+      // Recorte atual (apenas filtros no frontend)
+      let TB_PEDIDO = [];
+      let TB_ITEM = [];
 
       const pedidoFilter = document.getElementById("pedidoFilter");
       const statusFilter = document.getElementById("statusFilter");
@@ -314,97 +352,60 @@
       // =====================
       document.getElementById("btnTheme").onclick = () => document.body.classList.toggle("light");
 
+      // Sempre busca TODOS os registros do banco
       document.getElementById("btnRefresh").onclick = async () => {
         await fetchDataFromAPI();
         initFilters({ preserveSelection: true });
-        // se o usuário ainda não escolheu datas, tenta preencher
-        autoSetDateRange();
+
+        // se o usuário ainda não escolheu datas, tenta preencher com min/max do dataset
+        const dsEl = document.getElementById("dateStart");
+        const deEl = document.getElementById("dateEnd");
+        if (!dsEl.value || !deEl.value) {
+          const dates = ALL_PEDIDO.map((p) => parseD(pick(p, "data", "DATA"))).filter(Boolean);
+          if (dates.length) {
+            const min = new Date(Math.min(...dates.map((d) => d.getTime())));
+            const max = new Date(Math.max(...dates.map((d) => d.getTime())));
+            const iso = (d) => d.toISOString().slice(0, 10);
+            if (!dsEl.value) dsEl.value = iso(min);
+            if (!deEl.value) deEl.value = iso(max);
+          }
+        }
+
         applyFilters();
       };
 
-      ["dateStart", "dateEnd", "statusFilter", "clientFilter", "productFilter", "pedidoFilter"].forEach((id) =>
-        document.getElementById(id).addEventListener("change", () => {
-          // Filtros são 100% locais: NÃO faz nova consulta ao banco.
-          // As opções dos selects permanecem completas (baseadas no conjunto carregado).
-          applyFilters();
-        })
-      );
-
-      // Carrega automaticamente ao abrir
-      (async function boot() {
-        // pré-preenche datas com últimos 30 dias (se vazio)
-        const today = new Date();
-        const start = new Date();
-        start.setDate(today.getDate() - 30);
-
-        const pad = (n) => String(n).padStart(2, "0");
-        const toI = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-        const dsEl = document.getElementById("dateStart");
-        const deEl = document.getElementById("dateEnd");
-        if (!dsEl.value) dsEl.value = toI(start);
-        if (!deEl.value) deEl.value = toI(today);
-
-        await fetchDataFromAPI();
-        initFilters({ preserveSelection: true });
-        applyFilters();
-      })();
+      // aplicar filtros (somente frontend)
+      [pedidoFilter, statusFilter, clientFilter, productFilter, document.getElementById("dateStart"), document.getElementById("dateEnd")].forEach((el) => {
+        el.addEventListener("change", () => applyFilters());
+      });
 
       // =====================
-      // API
+      // Fetch API (sem filtros)
       // =====================
       async function fetchDataFromAPI() {
-        // Sempre busca o conjunto COMPLETO. Os filtros são aplicados apenas no frontend.
+        connStatus.textContent = "API: carregando...";
         try {
-          connStatus.textContent = "API: consultando...";
-          const resp = await fetch(`${API_BASE}/api/meg/dashboard`, {
-            headers: { Accept: "application/json" },
-          });
+          const res = await fetch("/api/meg/dashboard");
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
 
-          if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error(`HTTP ${resp.status} - ${text}`);
-          }
-
-          const data = await resp.json();
           ALL_PEDIDO = Array.isArray(data.pedidos) ? data.pedidos : [];
           ALL_ITEM = Array.isArray(data.itens) ? data.itens : [];
 
-          // Inicialmente, o recorte (TB_*) é o conjunto completo
-          TB_PEDIDO = ALL_PEDIDO.slice();
-          TB_ITEM = ALL_ITEM.slice();
-
           connStatus.textContent = `API: ok (${ALL_PEDIDO.length} pedidos)`;
-          connStatus.style.opacity = 1;
-        } catch (err) {
-          console.error(err);
+        } catch (e) {
+          console.error(e);
           connStatus.textContent = "API: erro";
-          alert(
-            "Não consegui consultar a API do dashboard." + (err?.message || err)
-          );
+          alert("Não foi possível carregar dados do servidor. Verifique o server Node/Express e a rota /api/meg/dashboard.");
+          ALL_PEDIDO = [];
+          ALL_ITEM = [];
         }
       }
 
       // =====================
-      // Filtros
+      // Inicializar filtros (SEMPRE com base no dataset completo)
       // =====================
-      function autoSetDateRange() {
-        // se já está preenchido, não mexe
-        const dsEl = document.getElementById("dateStart");
-        const deEl = document.getElementById("dateEnd");
-        if (dsEl.value && deEl.value) return;
-
-        const dates = ALL_PEDIDO.map((p) => new Date(p.data || p.DATA)).filter((d) => !isNaN(d));
-        if (!dates.length) return;
-        dates.sort((a, b) => a - b);
-
-        const pad = (n) => String(n).padStart(2, "0");
-        const toI = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        dsEl.value = toI(dates[0]);
-        deEl.value = toI(dates[dates.length - 1]);
-      }
-
-      function initFilters({ preserveSelection = true } = {}) {
+      function initFilters({ preserveSelection } = { preserveSelection: false }) {
         const current = {
           pedidoId: pedidoFilter.value,
           status: statusFilter.value,
@@ -412,8 +413,6 @@
           product: productFilter.value,
         };
 
-        // IMPORTANTE: as opções são sempre baseadas no conjunto COMPLETO (ALL_*)
-        // para permitir trocar combinações livremente sem perder opções.
         pedidoFilter.innerHTML = '<option value="">Todos</option>';
         statusFilter.innerHTML = '<option value="">Todos</option>';
         clientFilter.innerHTML = '<option value="">Todos</option>';
@@ -425,19 +424,19 @@
         const idSet = new Set();
 
         ALL_PEDIDO.forEach((p) => {
-          const STATUS = p.status ?? p.STATUS;
-          const ID = p.id ?? p.ID;
-          const CLIENTE = p.cliente ?? p.CLIENTE;
-          const NOME = p.nome ?? p.NOME;
+          const STATUS = pick(p, "status", "STATUS");
+          const ID = pick(p, "id", "ID");
+          const CLIENTE = pick(p, "cliente", "CLIENTE");
+          const NOME = pick(p, "nome", "NOME") || "";
 
-          if (STATUS) sSet.add(STATUS);
-          if (CLIENTE) cSet.add(`${CLIENTE}/${NOME || ""}`);
-          if (ID != null) idSet.add(String(ID));
+          if (STATUS) sSet.add(String(STATUS));
+          if (CLIENTE) cSet.add(`${CLIENTE}/${NOME}`);
+          if (ID !== null && ID !== undefined) idSet.add(String(ID));
         });
 
         ALL_ITEM.forEach((i) => {
-          const PRODUTO = i.produto ?? i.PRODUTO;
-          if (PRODUTO) pSet.add(PRODUTO);
+          const PRODUTO = pick(i, "produto", "PRODUTO");
+          if (PRODUTO) pSet.add(String(PRODUTO));
         });
 
         [...idSet]
@@ -479,42 +478,53 @@
       }
 
       // =====================
-      // Aplicar filtros (frontend)
+      // Aplicar filtros (somente frontend)
       // =====================
       function applyFilters() {
         const pid = pedidoFilter.value;
-        const ds = document.getElementById("dateStart").value ? new Date(document.getElementById("dateStart").value) : null;
-        const de = document.getElementById("dateEnd").value ? new Date(document.getElementById("dateEnd").value) : null;
+        const dsRaw = document.getElementById("dateStart").value;
+        const deRaw = document.getElementById("dateEnd").value;
+        const ds = dsRaw ? new Date(dsRaw) : null;
+        const de = deRaw ? new Date(deRaw) : null;
         const st = statusFilter.value;
         const cl = (clientFilter.value || "").split("/")[0];
         const pr = productFilter.value;
 
         let pedidos;
         if (pid) {
-          pedidos = ALL_PEDIDO.filter((p) => String(p.id ?? p.ID) === String(pid));
+          pedidos = ALL_PEDIDO.filter((p) => String(pick(p, "id", "ID")) === String(pid));
         } else {
           pedidos = ALL_PEDIDO.filter((p) => {
-            const d = parseD(p.data ?? p.DATA);
-            const STATUS = p.status ?? p.STATUS;
-            const CLIENTE = p.cliente ?? p.CLIENTE;
+            const d = parseD(pick(p, "data", "DATA"));
+            const STATUS = pick(p, "status", "STATUS");
+            const CLIENTE = pick(p, "cliente", "CLIENTE");
 
             const deEnd = de ? new Date(de.getFullYear(), de.getMonth(), de.getDate(), 23, 59, 59) : null;
             return (
               (!ds || (d && d >= ds)) &&
               (!deEnd || (d && d <= deEnd)) &&
-              (!st || STATUS === st) &&
-              (!cl || CLIENTE === cl)
+              (!st || String(STATUS || "") === st) &&
+              (!cl || String(CLIENTE || "") === cl)
             );
           });
         }
 
-        const ids = new Set(pedidos.map((p) => String(p.id ?? p.ID)));
-        let itens = ALL_ITEM.filter((i) => ids.has(String(i.pedido_id ?? i.PEDIDO_ID ?? i.pedidoId)) && (!pr || (i.produto ?? i.PRODUTO) === pr));
-        itens = itens.sort((a, b) => String(a.produto ? a.PRODUTO : "").localeCompare(String(b.produto ? b.PRODUTO : "")));
+        const ids = new Set(pedidos.map((p) => String(pick(p, "id", "ID"))));
+        let itens = ALL_ITEM.filter((i) => {
+          const pedidoId = pick(i, "pedido_id", "PEDIDO_ID", "pedidoId");
+          const prod = pick(i, "produto", "PRODUTO");
+          return ids.has(String(pedidoId)) && (!pr || String(prod || "") === pr);
+        });
+
+        itens = itens.sort((a, b) => String(pick(a, "produto", "PRODUTO") || "").localeCompare(String(pick(b, "produto", "PRODUTO") || "")));
+
+        TB_PEDIDO = pedidos;
+        TB_ITEM = itens;
 
         renderKPIs(pedidos, itens);
         renderTables(pedidos, itens);
         renderCharts(pedidos, itens);
+
         window.filtered = { pedidos, itens };
       }
 
@@ -522,32 +532,42 @@
       // Render
       // =====================
       function renderKPIs(pedidos, itens) {
-        document.getElementById("kpiPedidos").textContent = pedidos.length;
-        document.getElementById("kpiClientes").textContent = new Set(pedidos.map((p) => p.cliente ?? p.CLIENTE)).size;
+        document.getElementById("kpiPedidos").textContent = String(pedidos.length);
+        document.getElementById("kpiClientes").textContent = String(new Set(pedidos.map((p) => pick(p, "cliente", "CLIENTE"))).size);
 
-        const fat = pedidos.reduce((s, p) => s + Number(p.total ? p.TOTAL : 0), 0);
-        document.getElementById("kpiFaturamento").textContent = fmt(fat);
+        const fat = pedidos.reduce((s, p) => s + toNumber(pick(p, "total", "TOTAL")), 0);
+        document.getElementById("kpiFaturamento").textContent = fmtMoney(fat);
 
-        const qtd = itens.reduce((s, i) => s + Number(i.quantidade ? i.QUANTIDADE : 0), 0);
-        document.getElementById("kpiItens").textContent = String(qtd);
+        const qtd = itens.reduce((s, i) => s + toNumber(pick(i, "quantidade", "QUANTIDADE")), 0);
+        document.getElementById("kpiItens").textContent = fmtQty(qtd);
 
-        document.getElementById("kpiTicket").textContent = fmt(pedidos.length ? fat / pedidos.length : 0);
+        document.getElementById("kpiTicket").textContent = fmtMoney(pedidos.length ? fat / pedidos.length : 0);
       }
 
       function renderTables(pedidos, itens) {
         const tp = document.querySelector("#tblPedidos tbody");
         tp.innerHTML = pedidos
           .map((p) => {
-            const d = new Date(p.data ?? p.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${p.id ?? p.ID}</td><td>${p.cliente ?? p.CLIENTE} (${p.nome ? p.NOME : ""})</td><td>${fmt(p.total ? p.TOTAL : 0)}</td><td>${p.status ?? p.STATUS}</td></tr>`;
+            const d = parseD(pick(p, "data", "DATA"));
+            const id = pick(p, "id", "ID");
+            const cli = pick(p, "cliente", "CLIENTE");
+            const nome = pick(p, "nome", "NOME") || "";
+            const total = pick(p, "total", "TOTAL");
+            const st = pick(p, "status", "STATUS") || "";
+            return `<tr><td>${d ? d.toLocaleDateString("pt-BR") : ""}</td><td>${id ?? ""}</td><td>${cli ?? ""} (${nome})</td><td style='text-align:right'>${fmtMoney(total)}</td><td>${st}</td></tr>`;
           })
           .join("");
 
         const ti = document.querySelector("#tblItens tbody");
         ti.innerHTML = itens
           .map((i) => {
-            const d = new Date(i.data ?? i.DATA);
-            return `<tr><td>${isNaN(d) ? "" : d.toLocaleDateString("pt-BR")}</td><td>${i.pedido_id ?? i.PEDIDO_ID ?? ""}</td><td>${i.produto ?? i.PRODUTO}</td><td style='text-align:right'>${fmt(i.preco ? i.PRECO : 0)}</td><td>${i.quantidade ?? i.QUANTIDADE}</td><td>${i.status ?? i.STATUS}</td></tr>`;
+            const d = parseD(pick(i, "data", "DATA"));
+            const pid = pick(i, "pedido_id", "PEDIDO_ID", "pedidoId");
+            const prod = pick(i, "produto", "PRODUTO") || "";
+            const preco = pick(i, "preco", "PRECO");
+            const qtd = pick(i, "quantidade", "QUANTIDADE");
+            const st = pick(i, "status", "STATUS") || "";
+            return `<tr><td>${d ? d.toLocaleDateString("pt-BR") : ""}</td><td>${pid ?? ""}</td><td>${prod}</td><td style='text-align:right'>${fmtMoney(preco)}</td><td style='text-align:right'>${fmtQty(qtd)}</td><td>${st}</td></tr>`;
           })
           .join("");
       }
@@ -555,12 +575,12 @@
       function renderCharts(pedidos, itens) {
         const byDate = {};
         pedidos.forEach((p) => {
-          const d0 = new Date(p.data ?? p.DATA);
-          if (isNaN(d0)) return;
+          const d0 = parseD(pick(p, "data", "DATA"));
+          if (!d0) return;
           const d = d0.toISOString().slice(0, 10);
           if (!byDate[d]) byDate[d] = { o: 0, r: 0 };
           byDate[d].o++;
-          byDate[d].r += Number(p.total ? p.TOTAL : 0);
+          byDate[d].r += toNumber(pick(p, "total", "TOTAL"));
         });
 
         const labels = Object.keys(byDate).sort();
@@ -569,14 +589,14 @@
 
         const bySt = {};
         pedidos.forEach((p) => {
-          const st = p.status ?? p.STATUS;
+          const st = String(pick(p, "status", "STATUS") || "SEM STATUS");
           bySt[st] = (bySt[st] || 0) + 1;
         });
 
         const byProd = {};
         itens.forEach((i) => {
-          const prod = i.produto ?? i.PRODUTO;
-          byProd[prod] = (byProd[prod] || 0) + Number(i.quantidade ? i.QUANTIDADE : 0);
+          const prod = String(pick(i, "produto", "PRODUTO") || "SEM PRODUTO");
+          byProd[prod] = (byProd[prod] || 0) + toNumber(pick(i, "quantidade", "QUANTIDADE"));
         });
 
         const topP = Object.entries(byProd)
@@ -585,8 +605,8 @@
 
         const byCli = {};
         pedidos.forEach((p) => {
-          const cli = p.cliente ?? p.CLIENTE;
-          byCli[cli] = (byCli[cli] || 0) + Number(p.total ? p.TOTAL : 0);
+          const cli = String(pick(p, "cliente", "CLIENTE") || "SEM CLIENTE");
+          byCli[cli] = (byCli[cli] || 0) + toNumber(pick(p, "total", "TOTAL"));
         });
 
         const topC = Object.entries(byCli)
@@ -653,13 +673,13 @@
         pedidos.forEach((pedido, idx) => {
           if (idx > 0) pdf.addPage();
 
-          const pedidoId = pedido.id ?? pedido.ID;
-          const cliente = pedido.cliente ?? pedido.CLIENTE;
-          const nome = pedido.nome ?? pedido.NOME;
-          const endereco = pedido.endereco ?? pedido.ENDERECO;
-          const total = pedido.total ?? pedido.TOTAL;
-          const data = pedido.data ?? pedido.DATA;
-          const status = pedido.status ?? pedido.STATUS;
+          const pedidoId = pick(pedido, "id", "ID");
+          const cliente = pick(pedido, "cliente", "CLIENTE") || "";
+          const nome = pick(pedido, "nome", "NOME") || "";
+          const endereco = pick(pedido, "endereco", "ENDERECO") || "Não informado";
+          const total = pick(pedido, "total", "TOTAL");
+          const data = pick(pedido, "data", "DATA");
+          const status = pick(pedido, "status", "STATUS") || "";
 
           pdf.setFontSize(14);
           pdf.setFont(undefined, "bold");
@@ -667,11 +687,11 @@
 
           pdf.setFontSize(11);
           pdf.setFont(undefined, "normal");
-          pdf.text(`Cliente: ${cliente} - (${nome || ""})`, 10, 25);
+          pdf.text(`Cliente: ${cliente} - (${nome})`, 10, 25);
           pdf.text(`Data: ${data ? new Date(data).toLocaleDateString("pt-BR") : ""}`, 10, 32);
-          pdf.text(`Status: ${status || ""}`, 10, 39);
-          pdf.text(`Endereço: ${endereco || "Não informado"}`, 10, 46);
-          pdf.text(`Total do Pedido: R$ ${Number(total || 0).toFixed(2)}`, 10, 53);
+          pdf.text(`Status: ${status}`, 10, 39);
+          pdf.text(`Endereço: ${endereco}`, 10, 46);
+          pdf.text(`Total do Pedido: R$ ${toNumber(total).toFixed(2)}`, 10, 53);
 
           pdf.setFillColor(200, 200, 200);
           pdf.rect(10, 60, 190, 8, "F");
@@ -685,7 +705,7 @@
           let y = 73;
           let toggle = false;
 
-          const itensPedido = itens.filter((i) => String(i.pedido_id ?? i.PEDIDO_ID) === String(pedidoId));
+          const itensPedido = itens.filter((i) => String(pick(i, "pedido_id", "PEDIDO_ID", "pedidoId")) === String(pedidoId));
 
           itensPedido.forEach((i) => {
             if (toggle) {
@@ -697,9 +717,13 @@
             pdf.setTextColor(0, 0, 0);
             pdf.setFont(undefined, "normal");
 
-            pdf.text(String(i.produto ?? i.PRODUTO), 12, y);
-            pdf.text(String(i.quantidade ?? i.QUANTIDADE), 150, y);
-            pdf.text(`R$ ${Number(i.preco ? i.PRECO : 0).toFixed(2)}`, 200, y, null, null, "right");
+            const prod = String(pick(i, "produto", "PRODUTO") || "");
+            const qtd = pick(i, "quantidade", "QUANTIDADE");
+            const preco = pick(i, "preco", "PRECO");
+
+            pdf.text(prod, 12, y);
+            pdf.text(fmtQty(qtd), 150, y);
+            pdf.text(`R$ ${toNumber(preco).toFixed(2)}`, 200, y, null, null, "right");
 
             y += 8;
             if (y > 270) {
@@ -712,6 +736,28 @@
 
         pdf.save("lista_compras.pdf");
       };
+
+      // =====================
+      // Boot
+      // =====================
+      // carrega automaticamente ao abrir a página
+      (async () => {
+        await fetchDataFromAPI();
+        initFilters({ preserveSelection: false });
+        // tenta aplicar data min/max no primeiro load
+        const dsEl = document.getElementById("dateStart");
+        const deEl = document.getElementById("dateEnd");
+        const dates = ALL_PEDIDO.map((p) => parseD(pick(p, "data", "DATA"))).filter(Boolean);
+        if (dates.length) {
+          const min = new Date(Math.min(...dates.map((d) => d.getTime())));
+          const max = new Date(Math.max(...dates.map((d) => d.getTime())));
+          const iso = (d) => d.toISOString().slice(0, 10);
+          if (!dsEl.value) dsEl.value = iso(min);
+          if (!deEl.value) deEl.value = iso(max);
+        }
+        applyFilters();
+      })();
     </script>
+
   </body>
 </html>
