@@ -102,7 +102,7 @@ app.get('/api/meg/dashboard', async (req, res) => {
         SELECT id, data, produto, preco, quantidade, status, pedido_id
         FROM meg_pedido_item
         WHERE ${itWhere}
-        ORDER BY data ASC, id ASC
+        ORDER BY data ASC, pedido_id ASC
       `;
 
       const itensResult = await pool.query(sqlItens, itParams);
