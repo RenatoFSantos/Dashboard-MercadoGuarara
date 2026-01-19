@@ -132,3 +132,25 @@ canvas {
 .light .note {
   color: #6a6a6a;
 }
+
+.btn-deliver {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(46, 204, 113, 0.15);
+  color: #c9f7d7;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-deliver:hover {
+  background: rgba(46, 204, 113, 0.25);
+}
+.btn-deliver:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+
+

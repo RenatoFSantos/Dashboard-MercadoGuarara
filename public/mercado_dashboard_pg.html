@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Dashboard de Pedidos - Mercado Guarará (Postgres)</title>
     <link rel="icon" type="image/png" href="favicon_midilabs.png" />
+    <Link rel="stylesheet" href="./style.css"/>
 
     <!-- Charts + PDF -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -12,169 +13,12 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
 
-    <style>
-      body {
-        font-family: Inter, sans-serif;
-        margin: 0;
-        background: #0b1220;
-        color: #e6eef7;
-        padding: 20px;
-      }
-      .light {
-        background: #f5f5f5;
-        color: #333;
-      }
-      h1 {
-        margin-bottom: 8px;
-      }
-      .hint {
-        font-size: 12px;
-        color: #9fb3c8;
-        margin-top: 0;
-        margin-bottom: 14px;
-      }
-      .light .hint {
-        color: #6a6a6a;
-      }
-      .controls {
-        display: grid;
-        grid-template-columns: 160px 160px 160px repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        margin-bottom: 16px;
-      }
-      label {
-        font-size: 12px;
-        margin-bottom: 4px;
-        display: block;
-      }
-      select,
-      input {
-        width: 100%;
-        padding: 6px;
-        border-radius: 6px;
-        border: 1px solid #444;
-        background: transparent;
-        color: inherit;
-      }
-      .buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-      button {
-        padding: 6px 12px;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-      button.secondary {
-        background: rgba(255, 255, 255, 0.08);
-        color: inherit;
-      }
-      .light button.secondary {
-        background: #ececec;
-      }
-      button.primary {
-        background: #2b7fff;
-        color: #fff;
-      }
-      .status-pill {
-        font-size: 12px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #cfe6ff;
-      }
-      .light .status-pill {
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        color: #2b2b2b;
-      }
-      .kpis {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .card {
-        background: #121a2b;
-        padding: 12px;
-        border-radius: 12px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-      }
-      .light .card {
-        background: #fff;
-        color: #333;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-      }
-      .kpi-title {
-        font-size: 12px;
-        color: #9fb3c8;
-      }
-      .light .kpi-title {
-        color: #6a6a6a;
-      }
-      .kpi-value {
-        font-size: 22px;
-        font-weight: 700;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-      }
-      th,
-      td {
-        padding: 6px;
-        border-bottom: 1px solid #333;
-        text-align: left;
-        font-size: 12px;
-      }
-      .light th,
-      .light td {
-        border-bottom: 1px solid #ccc;
-      }
-      canvas {
-        max-height: 300px;
-        margin-top: 8px;
-      }
-      .note {
-        font-size: 12px;
-        color: #9fb3c8;
-        margin: 0;
-      }
-      .light .note {
-        color: #6a6a6a;
-      }
-
-      .btn-deliver {
-        padding: 6px 10px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        background: rgba(46, 204, 113, 0.15);
-        color: #c9f7d7;
-        font-size: 12px;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-      .btn-deliver:hover {
-        background: rgba(46, 204, 113, 0.25);
-      }
-      .btn-deliver:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-        background: rgba(255, 255, 255, 0.08);
-        color: inherit;
-      }
-    </style>
   </head>
 
   <body>
     <h1>📊 Dashboard de Pedidos - Mercado Guarará</h1>
     <p class="hint">
-      Versão Postgres. Este HTML <b>não</b> conecta direto no banco (por segurança). Ele consome uma API HTTP do seu
-      servidor (Node/Express) que lê as tabelas <code>meg_pedido</code> e <code>meg_pedido_item</code>.
+      Esta versão acessa os dados diretamente da base de dados não necessitando mais o uso da planilha do Google Sheet.
     </p>
 
     <div class="buttons">
@@ -243,23 +87,6 @@
     </div>
 
     <div class="card">
-      <h3>Evolução de Pedidos e Faturamento</h3>
-      <canvas id="timeChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Distribuição por Status</h3>
-      <canvas id="statusChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Top Produtos</h3>
-      <canvas id="prodChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Top Clientes</h3>
-      <canvas id="clientChart"></canvas>
-    </div>
-
-    <div class="card">
       <h3>Pedidos</h3>
       <p class="note">Dica: clique em “Atualizar do Banco” para carregar <b>tudo</b>. Depois use os filtros (locais) quantas vezes quiser — sem nova consulta.</p>
       <table id="tblPedidos">
@@ -293,6 +120,24 @@
         <tbody></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h3>Evolução de Pedidos e Faturamento</h3>
+      <canvas id="timeChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Distribuição por Status</h3>
+      <canvas id="statusChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Top Produtos</h3>
+      <canvas id="prodChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Top Clientes</h3>
+      <canvas id="clientChart"></canvas>
+    </div>
+
 
     
     <script>
