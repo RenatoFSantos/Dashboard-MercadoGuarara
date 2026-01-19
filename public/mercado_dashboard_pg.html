@@ -147,6 +147,26 @@
       .light .note {
         color: #6a6a6a;
       }
+
+      .btn-deliver {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(46, 204, 113, 0.15);
+        color: #c9f7d7;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn-deliver:hover {
+        background: rgba(46, 204, 113, 0.25);
+      }
+      .btn-deliver:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+      }
     </style>
   </head>
 
@@ -223,6 +243,23 @@
     </div>
 
     <div class="card">
+      <h3>Evolução de Pedidos e Faturamento</h3>
+      <canvas id="timeChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Distribuição por Status</h3>
+      <canvas id="statusChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Top Produtos</h3>
+      <canvas id="prodChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>Top Clientes</h3>
+      <canvas id="clientChart"></canvas>
+    </div>
+
+    <div class="card">
       <h3>Pedidos</h3>
       <p class="note">Dica: clique em “Atualizar do Banco” para carregar <b>tudo</b>. Depois use os filtros (locais) quantas vezes quiser — sem nova consulta.</p>
       <table id="tblPedidos">
@@ -233,6 +270,7 @@
             <th>Cliente</th>
             <th>Total</th>
             <th>Status</th>
+            <th>Ação</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -255,25 +293,6 @@
         <tbody></tbody>
       </table>
     </div>
-
-    <div class="card">
-      <h3>Evolução de Pedidos e Faturamento</h3>
-      <canvas id="timeChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Distribuição por Status</h3>
-      <canvas id="statusChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Top Produtos</h3>
-      <canvas id="prodChart"></canvas>
-    </div>
-    <div class="card">
-      <h3>Top Clientes</h3>
-      <canvas id="clientChart"></canvas>
-    </div>
-
-
 
     
     <script>
@@ -577,7 +596,16 @@
             const nome = pick(p, "nome", "NOME") || "";
             const total = pick(p, "total", "TOTAL");
             const st = pick(p, "status", "STATUS") || "";
-            return `<tr><td>${d ? d.toLocaleDateString("pt-BR") : ""}</td><td>${id ?? ""}</td><td>${cli ?? ""} (${nome})</td><td style='text-align:right'>${fmtMoney(total)}</td><td>${st}</td></tr>`;
+            const disabled = String(st).toUpperCase() === "ENTREGUE" ? "disabled" : "";
+            const btnText = String(st).toUpperCase() === "ENTREGUE" ? "Entregue" : "Marcar ENTREGUE";
+            return `<tr data-pedido-id="${id ?? ""}">
+              <td>${d ? d.toLocaleDateString("pt-BR") : ""}</td>
+              <td>${id ?? ""}</td>
+              <td>${cli ?? ""} (${nome})</td>
+              <td style='text-align:right'>${fmtMoney(total)}</td>
+              <td class="pedido-status">${st}</td>
+              <td><button class="btn-deliver" data-action="deliver" data-id="${id ?? ""}" ${disabled}>${btnText}</button></td>
+            </tr>`;
           })
           .join("");
 
@@ -593,6 +621,69 @@
             return `<tr><td>${d ? d.toLocaleDateString("pt-BR") : ""}</td><td>${pid ?? ""}</td><td>${prod}</td><td style='text-align:right'>${fmtMoney(preco)}</td><td style='text-align:right'>${fmtQty(qtd)}</td><td>${st}</td></tr>`;
           })
           .join("");
+      }
+
+      // =====================
+      // Marcar pedido como ENTREGUE (API + update local)
+      // =====================
+      document.querySelector("#tblPedidos tbody").addEventListener("click", async (ev) => {
+        const btn = ev.target.closest("button[data-action='deliver']");
+        if (!btn) return;
+        const id = btn.getAttribute("data-id");
+        if (!id) return;
+        await markAsDelivered(id, btn);
+      });
+
+      async function markAsDelivered(pedidoId, btnEl) {
+        const pid = String(pedidoId);
+        const row = btnEl?.closest("tr");
+        const statusCell = row?.querySelector(".pedido-status");
+
+        // Confirmação simples
+        if (!confirm(`Deseja marcar o pedido ${pid} como ENTREGUE?`)) return;
+
+        // UX: desabilita durante request
+        const prevText = btnEl.textContent;
+        btnEl.disabled = true;
+        btnEl.textContent = "Salvando...";
+
+        try {
+          const res = await fetch(`/api/meg/pedido/${encodeURIComponent(pid)}/entregar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            let msg = `HTTP ${res.status}`;
+            try {
+              const j = await res.json();
+              if (j && j.error) msg = j.error;
+            } catch {}
+            throw new Error(msg);
+          }
+          const updated = await res.json();
+
+          // Atualiza status localmente (ALL_PEDIDO)
+          const newStatus = (updated && updated.status) ? String(updated.status) : "ENTREGUE";
+          const p = ALL_PEDIDO.find((x) => String(pick(x, "id", "ID")) === pid);
+          if (p) {
+            if (p.status !== undefined) p.status = newStatus;
+            if (p.STATUS !== undefined) p.STATUS = newStatus;
+          }
+
+          // Atualiza célula e botão na tabela (não precisa recarregar do banco)
+          if (statusCell) statusCell.textContent = newStatus;
+          btnEl.textContent = "Entregue";
+          btnEl.disabled = true;
+
+          // Recalcula KPIs/gráficos conforme filtros atuais
+          applyFilters();
+        } catch (e) {
+          console.error(e);
+          alert(`Não foi possível marcar como ENTREGUE: ${e.message || e}`);
+          btnEl.disabled = false;
+          btnEl.textContent = prevText;
+        }
       }
 
       function renderCharts(pedidos, itens) {

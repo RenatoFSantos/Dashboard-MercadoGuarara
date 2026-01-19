@@ -116,6 +116,53 @@ app.get('/api/meg/dashboard', async (req, res) => {
   }
 });
 
+// Marcar pedido como ENTREGUE
+// Atualiza meg_pedido.status e (por consistência) também meg_pedido_item.status do mesmo pedido.
+app.post('/api/meg/pedido/:id/entregar', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  const idRaw = (req.params.id || '').toString().trim();
+  const pid = Number(idRaw);
+  if (!Number.isFinite(pid)) {
+    return res.status(400).json({ error: 'ID de pedido inválido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const upPedido = await client.query(
+      `UPDATE meg_pedido
+       SET status = 'ENTREGUE'
+       WHERE id = $1
+       RETURNING id, status`,
+      [pid]
+    );
+
+    if (upPedido.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Pedido não encontrado' });
+    }
+
+    // Atualiza itens (não é obrigatório, mas ajuda a manter tudo coerente)
+    await client.query(
+      `UPDATE meg_pedido_item
+       SET status = 'ENTREGUE'
+       WHERE pedido_id = $1`,
+      [pid]
+    );
+
+    await client.query('COMMIT');
+    return res.json(upPedido.rows[0]);
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('Erro /api/meg/pedido/:id/entregar:', err);
+    return res.status(500).json({ error: 'Erro interno ao atualizar status do pedido' });
+  } finally {
+    client.release();
+  }
+});
+
 // Raiz -> abre o dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'mercado_dashboard_pg.html'));
