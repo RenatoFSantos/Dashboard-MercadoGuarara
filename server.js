@@ -36,7 +36,7 @@ app.get('/api/meg/dashboard', async (req, res) => {
 
   const dateStart = isoDateOnly(req.query.dateStart);
   const dateEnd = isoDateOnly(req.query.dateEnd);
-  const status = (req.query.status || '').toString().trim();
+  const status = (req.query.status || 'AGUARDANDO ENTREGA').toString().trim();
   const cliente = (req.query.cliente || '').toString().trim();
   const pedidoId = (req.query.pedidoId || '').toString().trim();
   const produto = (req.query.produto || '').toString().trim();
