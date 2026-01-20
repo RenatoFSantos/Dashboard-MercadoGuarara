@@ -24,7 +24,7 @@ h1 {
 .controls {
   display: grid;
   grid-template-columns: 160px 160px 160px repeat(auto-fit, minmax(180px, 1fr));
-  gap: 20px;
+  gap: 16px;
   margin-bottom: 16px;
 }
 label {
