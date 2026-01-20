@@ -404,7 +404,7 @@
           return ids.has(String(pedidoId)) && (!pr || String(prod || "") === pr);
         });
 
-        itens = itens.sort((a, b) => String(pick(a, "produto", "PRODUTO") || "").localeCompare(String(pick(b, "produto", "PRODUTO") || "")));
+        itens = itens.sort((a, b) => String(pick(a, "pedido_id", "PEDIDO_ID") || "").localeCompare(String(pick(b, "pedido_id", "PEDIDO_ID") || "")));
 
         TB_PEDIDO = pedidos;
         TB_ITEM = itens;
